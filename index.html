@@ -56,6 +56,7 @@ details summary{cursor:pointer;color:var(--hint);padding:4px 0}
 
 <div class="card" id="list"></div>
 <div id="expr"></div>
+<div class="row"><button id="send" hidden>Отправить в чат</button></div>
 <button class="ghost" id="clear">Очистить блюдо</button>
 
 <details class="card">
@@ -72,40 +73,41 @@ details summary{cursor:pointer;color:var(--hint);padding:4px 0}
 
 <script>
 const tg = window.Telegram && Telegram.WebApp;
-	if (tg) { tg.ready(); tg.expand(); }
+if (tg) { tg.ready(); tg.expand(); }
 
-	// [название, ккал на 100 г, вес 1 шт в граммах (0 — только граммы)]
-	const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRz8pFRv5JPKzQPdL2J6BYQ1mYxIc41JI85VPcUE3f1W4c70vvtcyir9LaXp4UJIWxn_MJnjaUiyUwv/pub?gid=1632381490&single=true&output=csv"; // сюда вставьте ссылку на опубликованную таблицу (CSV)
-	let BASE = [
-	["Сосиска молочная",266,50],["Сардельки",270,100],["Колбаса вареная",260,0],["Сыр твердый",360,0],["Сыр плавленый",300,0],
-	["Картофельное пюре (на молоке с маслом)",106,0],["Картофель отварной",82,0],["Картофель жареный",190,0],["Макароны отварные",120,0],
-	["Рис отварной",116,0],["Гречка отварная",110,0],["Овсянка на воде",88,0],["Овсянка на молоке",102,0],["Хлеб белый",250,25],
-	["Хлеб черный",210,25],["Яйцо куриное",157,55],["Яичница",243,0],["Омлет",184,0],["Куриная грудка отварная",137,0],
-	["Куриное бедро запеченное",185,0],["Говядина отварная",254,0],["Свинина жареная",320,0],["Котлета домашняя",230,80],
-	["Фарш говяжий",250,0],["Рыба белая запеченная",110,0],["Лосось запеченный",208,0],["Творог 5%",121,0],["Творог 9%",169,0],
-	["Йогурт натуральный",66,0],["Молоко 2.5%",52,0],["Кефир 2.5%",53,0],["Сметана 20%",206,0],["Сливочное масло",748,0],
-	["Растительное масло",899,0],["Майонез",630,0],["Кетчуп",93,0],["Сахар",399,0],["Мед",329,0],["Помидор",20,100],
-	["Огурец",15,100],["Морковь",32,80],["Капуста белая",27,0],["Лук репчатый",41,80],["Яблоко",47,150],["Банан",96,120],
-	["Апельсин",43,150],["Шоколад молочный",535,0],["Печенье",430,10],["Пельмени вареные",275,15],["Блин",190,50],
-	["Пицца",270,0],["Сухарики",400,0],["Орехи грецкие",654,0],["Авокадо",160,150]
-	];
+// [название, ккал на 100 г, вес 1 шт в граммах (0 — только граммы)]
+const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRz8pFRv5JPKzQPdL2J6BYQ1mYxIc41JI85VPcUE3f1W4c70vvtcyir9LaXp4UJIWxn_MJnjaUiyUwv/pub?gid=1632381490&single=true&output=csv"; // сюда вставьте ссылку на опубликованную таблицу (CSV)
+const SEND_URL = "https://script.google.com/macros/s/AKfycbwCh4zu2zV5fOIbj2bLMWNBNBxMvzLxmIKmnlukmwW_bEZ1yRR6Xyr83dpeAhJcy3dc/exec"; // ссылка на скрипт Google Apps Script (отправка в чат)
+let BASE = [
+["Сосиска молочная",266,50],["Сардельки",270,100],["Колбаса вареная",260,0],["Сыр твердый",360,0],["Сыр плавленый",300,0],
+["Картофельное пюре (на молоке с маслом)",106,0],["Картофель отварной",82,0],["Картофель жареный",190,0],["Макароны отварные",120,0],
+["Рис отварной",116,0],["Гречка отварная",110,0],["Овсянка на воде",88,0],["Овсянка на молоке",102,0],["Хлеб белый",250,25],
+["Хлеб черный",210,25],["Яйцо куриное",157,55],["Яичница",243,0],["Омлет",184,0],["Куриная грудка отварная",137,0],
+["Куриное бедро запеченное",185,0],["Говядина отварная",254,0],["Свинина жареная",320,0],["Котлета домашняя",230,80],
+["Фарш говяжий",250,0],["Рыба белая запеченная",110,0],["Лосось запеченный",208,0],["Творог 5%",121,0],["Творог 9%",169,0],
+["Йогурт натуральный",66,0],["Молоко 2.5%",52,0],["Кефир 2.5%",53,0],["Сметана 20%",206,0],["Сливочное масло",748,0],
+["Растительное масло",899,0],["Майонез",630,0],["Кетчуп",93,0],["Сахар",399,0],["Мед",329,0],["Помидор",20,100],
+["Огурец",15,100],["Морковь",32,80],["Капуста белая",27,0],["Лук репчатый",41,80],["Яблоко",47,150],["Банан",96,120],
+["Апельсин",43,150],["Шоколад молочный",535,0],["Печенье",430,10],["Пельмени вареные",275,15],["Блин",190,50],
+["Пицца",270,0],["Сухарики",400,0],["Орехи грецкие",654,0],["Авокадо",160,150]
+];
 
-	const store = {
-	get(){try{return JSON.parse(localStorage.getItem("custom")||"[]")}catch(e){return []}},
-	set(v){try{localStorage.setItem("custom",JSON.stringify(v))}catch(e){}}
-	};
-	let custom = store.get();
-	let dish = [];
-	let picked = null;
+const store = {
+  get(){try{return JSON.parse(localStorage.getItem("custom")||"[]")}catch(e){return []}},
+  set(v){try{localStorage.setItem("custom",JSON.stringify(v))}catch(e){}}
+};
+let custom = store.get();
+let dish = [];
+let picked = null;
 
-	const $ = id => document.getElementById(id);
-	const all = () => custom.concat(BASE);
-	const fmt = n => Math.round(n);
-	const norm = s => s.toLowerCase().replace(/ё/g,"е");
+const $ = id => document.getElementById(id);
+const all = () => custom.concat(BASE);
+const fmt = n => Math.round(n);
+const norm = s => s.toLowerCase().replace(/ё/g,"е");
 
-	function setUnits(){
-	const u = $("unit");
-	u.innerHTML = '<option value="g">г</option>' + (picked && picked[2] ? '<option value="pc">шт</option>' : "");
+function setUnits(){
+  const u = $("unit");
+  u.innerHTML = '<option value="g">г</option>' + (picked && picked[2] ? '<option value="pc">шт</option>' : "");
   if (picked && picked[2]) u.value = "pc";
 }
 
@@ -201,6 +203,20 @@ async function loadSheet(){
   }
 }
 loadSheet();
+
+async function sendToChat(){
+  if(!dish.length) return;
+  const s = dish.reduce((a,d)=>a+d.kcal,0);
+  const text = dish.map(d=>d.name+" "+d.label+" — "+fmt(d.kcal)+" ккал").join("\n") + "\n\nИтого: " + fmt(s) + " ккал";
+  const b = $("send"); b.disabled = true;
+  try{
+    await fetch(SEND_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},body:JSON.stringify({text,initData:tg.initData})});
+    b.textContent = "Отправлено ✓";
+    if(tg) tg.HapticFeedback.notificationOccurred("success");
+  }catch(e){ b.textContent = "Не удалось отправить"; }
+  setTimeout(()=>{ b.textContent = "Отправить в чат"; b.disabled = false; }, 2000);
+}
+if(SEND_URL && tg && tg.initData){ $("send").hidden = false; $("send").onclick = sendToChat; }
 setUnits(); render();
 </script>
 </body>
