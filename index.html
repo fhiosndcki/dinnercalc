@@ -39,11 +39,20 @@ button.ghost{background:transparent;color:var(--hint);padding:6px 10px;font-weig
 #total .big{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums}
 #expr{color:var(--hint);font-size:14px;margin:-6px 0 12px;word-break:break-word}
 details summary{cursor:pointer;color:var(--hint);padding:4px 0}
+.tabs{display:flex;gap:6px;background:var(--card);border-radius:12px;padding:4px;margin-bottom:14px}
+.tabs button{flex:1;background:transparent;color:var(--hint);font-weight:500}
+.tabs button.on{background:var(--bg);color:var(--fg);font-weight:600}
 </style>
 </head>
 <body>
 <h1>Калькулятор калорий</h1>
 
+<div class="tabs">
+  <button id="t-calc" class="on">Калькулятор</button>
+  <button id="t-hist">Сохранённое</button>
+</div>
+
+<div id="tab-calc">
 <div class="card">
   <input id="q" placeholder="Продукт: сосиска, пюре, яблоко…" autocomplete="off">
   <div id="sug"></div>
@@ -56,9 +65,12 @@ details summary{cursor:pointer;color:var(--hint);padding:4px 0}
 
 <div class="card" id="list"></div>
 <div id="expr"></div>
-<div class="row"><button id="send" hidden>Отправить в чат</button></div>
-<div id="sendinfo" style="color:var(--danger);font-size:13px;margin:6px 0;word-break:break-word"></div>
 <button class="ghost" id="clear">Очистить блюдо</button>
+
+<div class="card">
+  <div class="row"><input id="hname" placeholder="Название блюда (не обязательно)"></div>
+  <div class="row"><button id="save">Сохранить блюдо</button></div>
+</div>
 
 <details class="card">
   <summary>Свой продукт</summary>
@@ -69,6 +81,14 @@ details summary{cursor:pointer;color:var(--hint);padding:4px 0}
   </div>
   <div class="row"><button id="cadd">Сохранить продукт</button></div>
 </details>
+</div>
+
+<div id="tab-hist" hidden>
+  <div class="card" id="histcard">
+    <div id="today" style="font-weight:600;margin-bottom:4px"></div>
+    <div id="hist"></div>
+  </div>
+</div>
 
 <div id="total"><span>Итого</span><span><span class="big" id="sum">0</span> ккал</span></div>
 
@@ -78,7 +98,6 @@ if (tg) { tg.ready(); tg.expand(); }
 
 // [название, ккал на 100 г, вес 1 шт в граммах (0 — только граммы)]
 const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRz8pFRv5JPKzQPdL2J6BYQ1mYxIc41JI85VPcUE3f1W4c70vvtcyir9LaXp4UJIWxn_MJnjaUiyUwv/pub?gid=1632381490&single=true&output=csv"; // сюда вставьте ссылку на опубликованную таблицу (CSV)
-const SEND_URL = "https://script.google.com/macros/s/AKfycbxcS-Q7Nq5ZHsHryYQmCdnRztvR4UI21FCiGuz4uIVWQupd8AGcciIbQyeA58kWyilW/exec"; // ссылка на скрипт Google Apps Script (отправка в чат)
 let BASE = [
 ["Сосиска молочная",266,50],["Сардельки",270,100],["Колбаса вареная",260,0],["Сыр твердый",360,0],["Сыр плавленый",300,0],
 ["Картофельное пюре (на молоке с маслом)",106,0],["Картофель отварной",82,0],["Картофель жареный",190,0],["Макароны отварные",120,0],
@@ -205,23 +224,59 @@ async function loadSheet(){
 }
 loadSheet();
 
-async function sendToChat(){
-  if(!dish.length) return;
-  const s = dish.reduce((a,d)=>a+d.kcal,0);
-  const text = dish.map(d=>d.name+" "+d.label+" — "+fmt(d.kcal)+" ккал").join("\n") + "\n\nИтого: " + fmt(s) + " ккал";
-  const b = $("send"); b.disabled = true;
-  let ok = false, info = "";
-  try{
-    const r = await fetch(SEND_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({text,initData:tg.initData})});
-    info = (await r.text()).trim();
-    ok = info === "ok";
-  }catch(e){ info = "Нет ответа от скрипта: " + e; }
-  b.textContent = ok ? "Отправлено ✓" : "Не удалось отправить";
-  $("sendinfo").textContent = ok ? "" : info;
-  if(tg) tg.HapticFeedback.notificationOccurred(ok ? "success" : "error");
-  setTimeout(()=>{ b.textContent = "Отправить в чат"; b.disabled = false; }, 2500);
+
+const hs = {
+  get(){try{return JSON.parse(localStorage.getItem("history")||"[]")}catch(e){return []}},
+  set(v){try{localStorage.setItem("history",JSON.stringify(v))}catch(e){}}
+};
+let history = hs.get();
+const dayKey = t => new Date(t).toDateString();
+const when = t => new Date(t).toLocaleString("ru-RU",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
+
+function saveDish(){
+  if(!dish.length){ if(tg) tg.HapticFeedback.notificationOccurred("error"); return; }
+  const total = dish.reduce((a,d)=>a+d.kcal,0);
+  history.unshift({id:Date.now(), t:Date.now(), name:$("hname").value.trim(), items:dish.slice(), total});
+  history = history.slice(0,200); hs.set(history);
+  $("hname").value = ""; dish = []; render(); renderHist();
+  if(tg) tg.HapticFeedback.notificationOccurred("success");
 }
-if(SEND_URL && tg && tg.initData){ $("send").hidden = false; $("send").onclick = sendToChat; }
+
+function renderHist(){
+  $("t-hist").textContent = history.length ? "Сохранённое ("+history.length+")" : "Сохранённое";
+  const box = $("hist"); box.innerHTML = history.length ? "" : '<div class="empty">Пока ничего не сохранено</div>';
+  const todaySum = history.filter(e=>dayKey(e.t)===dayKey(Date.now())).reduce((a,e)=>a+e.total,0);
+  $("today").textContent = "Сегодня сохранено: " + fmt(todaySum) + " ккал";
+  history.forEach(e=>{
+    const d = document.createElement("details");
+    d.className = "item"; d.style.display = "block";
+    const s = document.createElement("summary");
+    s.style.cssText = "display:flex;gap:8px;align-items:center;color:var(--fg)";
+    s.innerHTML = '<span class="n">'+(e.name||"Блюдо")+'<div class="a">'+when(e.t)+'</div></span><span class="k">'+fmt(e.total)+' ккал</span>';
+    d.appendChild(s);
+    const body = document.createElement("div"); body.className = "a"; body.style.margin = "6px 0";
+    body.textContent = e.items.map(i=>i.name.toLowerCase()+" "+i.label).join(" + ");
+    d.appendChild(body);
+    const r = document.createElement("div"); r.className = "row";
+    const open = document.createElement("button"); open.textContent = "Открыть";
+    open.onclick = () => { dish = e.items.slice(); render(); showTab("calc"); window.scrollTo(0,0); };
+    const del = document.createElement("button"); del.className = "ghost"; del.textContent = "Удалить";
+    del.onclick = () => { history = history.filter(x=>x.id!==e.id); hs.set(history); renderHist(); };
+    r.appendChild(open); r.appendChild(del); d.appendChild(r);
+    box.appendChild(d);
+  });
+}
+function showTab(n){
+  $("tab-calc").hidden = n !== "calc";
+  $("tab-hist").hidden = n !== "hist";
+  $("total").style.display = n === "calc" ? "flex" : "none";
+  $("t-calc").className = n === "calc" ? "on" : "";
+  $("t-hist").className = n === "hist" ? "on" : "";
+}
+$("t-calc").onclick = () => showTab("calc");
+$("t-hist").onclick = () => showTab("hist");
+$("save").onclick = saveDish;
+renderHist();
 setUnits(); render();
 </script>
 </body>
