@@ -88,6 +88,7 @@ details summary{cursor:pointer;color:var(--hint);padding:4px 0}
   </div>
   <div class="row"><button id="cadd">Сохранить продукт</button></div>
 </details>
+<div id="src" style="color:var(--hint);font-size:12px;text-align:center"></div>
 </div>
 
 <div id="tab-hist" hidden>
@@ -228,16 +229,23 @@ function fromCSV(t){
     .filter(r=>r[0] && r[1]>=0);
 }
 async function loadSheet(){
-  if(!SHEET_URL) return;
+  const say = t => { const el = $("src"); if(el) el.textContent = t; };
+  if(!SHEET_URL){ say("База: встроенная (ссылка на таблицу не указана)"); return; }
   try{
     const r = await fetch(SHEET_URL, {cache:"no-store"});
-    if(!r.ok) throw 0;
-    const rows = fromCSV(await r.text());
-    if(!rows.length) throw 0;
+    if(!r.ok) throw new Error("ответ сервера " + r.status);
+    const text = await r.text();
+    if(/^\s*<(!doctype|html)/i.test(text)) throw new Error("вместо CSV пришла веб-страница (выберите формат CSV при публикации)");
+    const rows = fromCSV(text);
+    if(!rows.length) throw new Error("в таблице не найдено ни одной строки с названием и ккал");
     BASE = rows;
+    say("База из таблицы: " + rows.length + " продуктов");
     try{localStorage.setItem("sheet",JSON.stringify(rows))}catch(e){}
   }catch(e){
-    try{ const c = JSON.parse(localStorage.getItem("sheet")||"null"); if(c&&c.length) BASE=c; }catch(_){}
+    let c = null;
+    try{ c = JSON.parse(localStorage.getItem("sheet")||"null"); }catch(_){}
+    if(c && c.length){ BASE = c; say("Таблица не загрузилась (" + e.message + "). Показана последняя сохранённая копия: " + c.length + " продуктов"); }
+    else say("Таблица не загрузилась (" + e.message + "). Показана встроенная база");
   }
 }
 loadSheet();
