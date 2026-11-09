@@ -96,6 +96,20 @@ details summary{cursor:pointer;color:var(--hint);padding:4px 0}
     <div id="today" style="font-weight:600;margin-bottom:4px"></div>
     <div id="hist"></div>
   </div>
+  <details class="card">
+    <summary>Резервная копия и перенос на другое устройство</summary>
+    <div class="row">
+      <button id="bkcopy">Скопировать копию</button>
+      <button id="bkfile">Скачать файл</button>
+    </div>
+    <textarea id="bk" placeholder="Чтобы восстановить, вставьте сюда текст копии или выберите файл ниже" style="width:100%;min-height:84px;margin-top:8px;padding:10px;border-radius:10px;border:1px solid transparent;background:var(--bg);color:inherit;font:inherit;font-size:13px"></textarea>
+    <div class="row">
+      <button id="bkrestore">Восстановить из текста</button>
+      <button id="bkpick" class="ghost" style="border:1px solid var(--hint)">Выбрать файл</button>
+    </div>
+    <input id="bkin" type="file" accept=".json,.txt,application/json,text/plain" hidden>
+    <div id="bkmsg" style="color:var(--hint);font-size:13px;margin-top:8px;word-break:break-word"></div>
+  </details>
 </div>
 
 <div id="tab-rec" hidden>
@@ -328,6 +342,58 @@ $("recadd").onclick = () => { rec.rows.push({n:"",g:""}); saveRec(); renderRec()
 $("recreset").onclick = () => { rec.f = 1; saveRec(); renderRec(); };
 $("recclear").onclick = () => { rec = {rows:[{n:"",g:""},{n:"",g:""},{n:"",g:""}],f:1}; saveRec(); renderRec(); };
 renderRec();
+
+function makeBackup(){
+  return JSON.stringify({app:"calories",v:1,saved:Date.now(),history:history,custom:custom,recipe:rec});
+}
+const bmsg = t => { $("bkmsg").textContent = t; };
+async function copyText(t){
+  try{ await navigator.clipboard.writeText(t); return true; }catch(e){}
+  try{ const ta=$("bk"); ta.value=t; ta.focus(); ta.select(); const ok=document.execCommand("copy"); return ok; }catch(e){ return false; }
+}
+$("bkcopy").onclick = async () => {
+  const t = makeBackup();
+  if(await copyText(t)) bmsg("Копия скопирована. Вставьте её в «Избранное» или отправьте себе, затем на другом устройстве вставьте в поле ниже.");
+  else { $("bk").value = t; bmsg("Не удалось скопировать автоматически. Текст в поле ниже: выделите и скопируйте вручную."); }
+};
+$("bkfile").onclick = () => {
+  try{
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([makeBackup()],{type:"application/json"}));
+    a.download = "calories-backup.json";
+    document.body.appendChild(a); a.click(); a.remove();
+    bmsg("Если файл не скачался (в Telegram так бывает), используйте «Скопировать копию».");
+  }catch(e){ bmsg("Скачивание не сработало. Используйте «Скопировать копию»."); }
+};
+function restoreBackup(text){
+  let d;
+  try{ d = JSON.parse(text); }catch(e){ bmsg("Не удалось прочитать копию. Проверьте, что вставлен весь текст."); return; }
+  if(!d || d.app !== "calories"){ bmsg("Это не копия калькулятора."); return; }
+  let nh = 0, nc = 0;
+  if(Array.isArray(d.history)){
+    const have = new Set(history.map(e=>e.id));
+    d.history.forEach(e=>{ if(e && e.id && Array.isArray(e.items) && !have.has(e.id)){ history.push(e); nh++; } });
+    history.sort((a,b)=>b.t-a.t); history = history.slice(0,200); hs.set(history);
+  }
+  if(Array.isArray(d.custom)){
+    const names = new Set(custom.map(p=>norm(p[0])));
+    d.custom.forEach(p=>{ if(Array.isArray(p) && p[0] && !names.has(norm(p[0]))){ custom.push(p); names.add(norm(p[0])); nc++; } });
+    store.set(custom);
+  }
+  let rr = "";
+  if(d.recipe && Array.isArray(d.recipe.rows) && d.recipe.rows.some(r=>r.n||r.g) && !rec.rows.some(r=>r.n||r.g)){
+    rec = d.recipe; saveRec(); renderRec(); rr = ", рецепт";
+  }
+  renderHist();
+  bmsg("Восстановлено: блюд " + nh + ", своих продуктов " + nc + rr + ".");
+  if(tg) tg.HapticFeedback.notificationOccurred("success");
+}
+$("bkrestore").onclick = () => { const t = $("bk").value.trim(); if(!t){ bmsg("Сначала вставьте текст копии в поле."); return; } restoreBackup(t); };
+$("bkpick").onclick = () => $("bkin").click();
+$("bkin").onchange = e => {
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader(); r.onload = () => restoreBackup(String(r.result)); r.readAsText(f); e.target.value = "";
+};
 $("save").onclick = saveDish;
 renderHist();
 setUnits(); render();
